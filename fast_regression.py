@@ -2,9 +2,9 @@ import easygui as eg
 import sys
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
+from statsmodels.stats.outliers_influence import OLSInfluence
 import pandas as pd
 from patsy import dmatrices
-from statsmodels.graphics.regressionplots import plot_partregress
 import csv as csv
 import os
 
@@ -22,8 +22,9 @@ def fast_regression(regressors_path, predictors_path, resid_directory, plots_dir
 
     regressors = pd.read_csv(regressors_path, index_col=0)
     row_names = regressors.index
-    label_points = eg.multchoicebox("Choose which datapoints will be labeled in the output plots:",
-                                     "Label Datapoints", choices=row_names)
+    label_points = row_names
+    #label_points = eg.multchoicebox("Choose which datapoints will be labeled in the output plots:",
+                                     # "Label Datapoints", choices=row_names)
     regressor_names = list(regressors.columns.values)
     isfirst = True
     
@@ -44,6 +45,11 @@ def fast_regression(regressors_path, predictors_path, resid_directory, plots_dir
             company_names = x.index
             results = sm.OLS(y, x).fit()
 
+            influence = OLSInfluence(results)
+            #Cooks Distances. Second item in tuple is p-values, though idk what that means
+            cooks_distance =  influence.cooks_distance[0]
+            internal_stud_resid = influence.resid_studentized_internal
+            external_stud_resid = influence.resid_studentized_external
             scale = results.scale
             p_value = results.pvalues[1] #p value of variable, not intercept
             rsquared = results.rsquared
@@ -60,7 +66,7 @@ def fast_regression(regressors_path, predictors_path, resid_directory, plots_dir
             figure.add_subplot(2,1,1).plot(x, fittedvalues + std_error, 'g-')
             figure.add_subplot(2,1,1).plot(x, fittedvalues - std_error, 'g-')
 
-            #annotate all points, each a particular company, with its respective name   
+            #annotate points based on which have been selected to be labeled
             labeled_points =  list(set(company_names).intersection(set(label_points)))
             for company_name in labeled_points:
                 xp = x.ix[company_name,0]
@@ -79,13 +85,16 @@ def fast_regression(regressors_path, predictors_path, resid_directory, plots_dir
 
             if isfirst: #write column headers if this is the first row in the file
                 writerow(["utility","regressor", "predictor", "rsquared", "p_value", 
-                            "std_error", "residual", "category_spend"], resid_directory, isfirst)
+                            "std_error", "residual",  "cooks_distance", "category_spend"], resid_directory, isfirst)
                 isfirst = False
             #write residuals to file
             for i, utility_name in enumerate(company_names):
                 cat_spend = regressors[regressor_name]
                 utility_cat_spend = cat_spend.ix[utility_name]
                 resid_data = [utility_name, regressor_name, predictor_name, rsquared, p_value, 
-                                std_error, results.resid[i], utility_cat_spend]
+                                std_error, results.resid[i] ,cooks_distance[i],utility_cat_spend]
                 writerow(resid_data, resid_directory, isfirst)
+
+if  __name__ == "__main__":
+    fast_regression("./data/no outliers spend cr.csv", "./data/no outliers SNL cr filled in.csv" , "./Regression Output/residuals", "./Regression Output/") 
 
